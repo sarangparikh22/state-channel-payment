@@ -16,7 +16,7 @@ contract SimpleStateChannel{
     uint public p2f;
     uint public expDate;
     
-    mapping(address => uint) balance;
+    mapping(address => uint) public balance;
     
     enum ChannelSate{
         OpenToContribution,
@@ -45,13 +45,23 @@ contract SimpleStateChannel{
         p1 = _p1;
         p2 = _p2;
     }
+    
+    // open channel function to start state channel
     function open() payable public canFund onlyParticipants{
+        // Opening state channel is allowed only once, 
+        // after opening and adding some ether, balance of msg.sender will not be "0" through "canFund"
         require(msg.value > 0);
         balance[msg.sender] = msg.value;
+        
+        // channel will be changed to open state only when both parties add there funds to the contract
         if(balance[p1] > 0 && balance[p2] > 0){
             channelState = ChannelSate.Opened;
         }
     }
+    
+    // function to verify that 
+    // 1. Message has been signed by both parties
+    // 2. Signing address extracted from signature and user address is same for both parties
     function verify(uint _channelID, uint _nonce, uint _p1f, uint _p2f, bytes memory sig1, bytes memory sig2) public view returns(bool){
         require(_channelID == channelID && (_p1f + _p2f) * 1 ether == address(this).balance);
         string memory nonceString = strOps.uintToString(_nonce);
@@ -66,6 +76,8 @@ contract SimpleStateChannel{
             return false;
         }
     }
+    
+    // Function to close the state channel and start timer to allow for challenge period
     function close(uint _channelID, uint _nonce, uint _p1f, uint _p2f, bytes memory sig1, bytes memory sig2) public allowClose onlyParticipants{
         require(channelState == ChannelSate.Opened);
         require(verify(_channelID, _nonce, _p1f, _p2f, sig1, sig2) == true);
@@ -76,6 +88,8 @@ contract SimpleStateChannel{
         p2f = _p2f;
         expDate = now + 1 minutes;
     }
+    
+    // Function for challenge period to allow other party to challenge in case of any dispute
     function challenge(uint _channelID, uint _nonce, uint _p1f, uint _p2f, bytes memory sig1, bytes memory sig2) public{
         require(channelState == ChannelSate.Close);
         require(nonce < _nonce && msg.sender != closer && 
@@ -86,12 +100,15 @@ contract SimpleStateChannel{
         p2f = _p2f;
         expDate = now;
     }
+    
+    // Function to claim the final amount after channel closure and transfer the amount to respective accounts from contract
     function claim() public onlyParticipants{
         require(channelState == ChannelSate.Close && now > expDate);
         p1.transfer(p1f * 1 ether);
         p2.transfer(p2f * 1 ether);
         channelState = ChannelSate.StateChannelCompleted;
     }
+    
     function contractBalance() public view returns(uint){
         return address(this).balance;
     }
